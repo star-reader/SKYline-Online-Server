@@ -1,0 +1,7 @@
+﻿main.obj : error LNK2019: unresolved external symbol SimConnect_AddToDataDefinition referenced in function main
+main.obj : error LNK2019: unresolved external symbol SimConnect_RequestDataOnSimObject referenced in function main
+main.obj : error LNK2019: unresolved external symbol SimConnect_Close referenced in function main
+main.obj : error LNK2019: unresolved external symbol SimConnect_Open referenced in function main
+main.obj : error LNK2019: unresolved external symbol SimConnect_CallDispatch referenced in function main
+E:\SKYline_Online_Server\Client_Side\Client_Side\Client_Side\SimConnect.lib : warning LNK4272: library machine type 'x86' conflicts with target machine type 'x64'
+E:\SKYline_Online_Server\Client_Side\Client_Side\x64\Debug\Client_Side.exe : fatal error LNK1120: 5 unresolved externals
