@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+  <body>
+    <script>
+
+      let websocket = null; //全局WebSocket对象
+      let lockReconnect = false; // 网络断开重连
+      let wsCreateHandler = null; // 创建连接
+      function createWebSocket() {
+        try {
+          if ("WebSocket" in window) {
+            websocket = new WebSocket(`ws://localhost:8010/online/socketTest`);
+          } else if ("MozWebSocket" in window) {
+            websocket = new MozWebSocket(`ws://localhost:8010/online/socketTest`);
+          } else {
+            websocket = new SockJS(`ws://localhost:8010/online/socketTest`);
+          }
+        } catch {
+          reconnect();
+          return;
+        }
+
+        websocket.onopen = function (event) {
+          // websocket.send("连接成功");
+          console.log("服务已连接");
+          websocket.send({
+            code: 200,
+            data: 111
+          })
+        };
+        
+
+        websocket.onmessage = function (event) {
+          console.log(event.data)
+        };
+        websocket.onclose = function (event) {
+          console.log("服务连接关闭");
+        };
+        websocket.onerror = function (event) {
+          console.log(event, "连接出错");
+        };
+        websocket.addEventListener('open', (event) => {
+            const data = {message: 'Hello, world!'};
+            const eventData = {type: 'my-event', data: data};
+            socket.send(JSON.stringify(eventData));
+            });
+      }
+      /**
+       *  异常处理
+       * 处理可以检测到的异常，并尝试重新连接
+       */
+      function reconnect() {
+        if (lockReconnect) {
+          return;
+        }
+        console.log("reconnect");
+        lockReconnect = true;
+        // 没链接上会一直连接，设置延迟，避免过多请求
+        wsCreateHandler && clearTimeout(wsCreateHandler);
+        wsCreateHandler = setTimeout(function () {
+          console.log("-----websoket异常-------");
+          createWebSocket();
+          lockReconnect = false;
+        }, 1000);
+      }
+      function websocketClose() {
+        console.log("执行了关闭");
+        websocket.close(); //手动关闭websocket
+      }
+
+      createWebSocket()
+    </script>
+  </body>
+</html>

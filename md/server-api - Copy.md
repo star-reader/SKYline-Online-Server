@@ -10,7 +10,7 @@ last modified by : 2287
 
 ## 总体介绍
 
-新版服务器后端处理请求以WebSocket为基础
+新版服务器后端处理请求以TCP / HTTPS为基础，包含Authorization、请求转发等技术
 
 主要系统包含三部分：客户端、服务端、管制端
 
@@ -131,18 +131,31 @@ const atcData = {
 
 ### 实时聊天信息
 
-聊天信息基于WebSocket实时通信，下面为数据格式
-
 ```js
-{
-   sender:{
-      cid: "2287",
-      callsign: "PRC_FSS",
-      type:"System" // "System" 系统级别消息，只有ADM允许发送; "BroadCast" 广播，ADM & SUP可以发送；"Chat" 聊天，均可
-   },
-   to: "DLH1398",
-   sendTime:  1655437600,
-   content:"Welcome to SKYline!"
+const communicationData = {
+    broadcast:[
+        // SUP ADM等发送的全局广播消息
+        {
+            sender:{
+                cid: "2287",
+                callsign: "System" // 只有ADM拥有“System”权限
+            },
+            sendTime:  1655437600,
+           	content:"Welcome to SKYline!"
+        }，
+        {
+            sender:{
+                cid: "1398",
+                callsign: "Broadcast" // ADM & SUP 有"Baordcast"权限
+            },
+            sendTime:  1655436900,
+           	content:"Official event tonight! Fly with us for ZBAA - ZHCC !"
+        },
+        //以此类推
+    ],
+    common:[
+        //与上方数据类型一致
+    ]
 }
 ```
 
@@ -161,44 +174,8 @@ const atcData = {
 <b>除了登录系统，其余接口均需要有效的JWT授权，请在访问时携带以下请求头</b>：
 
 ```
-Authorization : <Access_Token>
+Authorization : Bearer <Access_Token>
 ```
-
-示例 
-
-```js
-const ws = new WebSocket('ws://localhost:3000/chat');
-ws.send('Hello, world!', {
-  'Authorization': 'access_token goes here'
-});
-```
-
-
-
-### 登录接口详细说明
-
-certificate为AES加密过的字符串，解密后内部具体数据如下
-
-```json
-{
-    "cid":"2287",
-    "password":"114514",
-    "email":"3084895416@qq.com",
-    "domain":"https://sim.skylineflyleague.cn/",
-    "time":1654425500,
-    "random":"随机字符串"
-}
-```
-
-后端收到certificate后尝试解密，如果解密失败返回登录失败
-
-解密成功后首先需要判断请求来源(referer)与证书的domain是否符合，如果不返回，登录接口返回信息为
-
-```
-signature do not match your certificate
-```
-
-如果访问来源全部验证完成，则进行登录校验，成功后生成JWT，返回给客户（见于下方用户登录接口）
 
 
 
@@ -213,16 +190,10 @@ signature do not match your certificate
 适用于Client Of SKYline与SKYScope使用
 
 ```http
-WebSocket /connect/login
+HTTPS POST /connect/login
 ```
 
-发送数据示例
-
-```json
-{
-    "certificate":"xxx略"
-}
-```
+参数列表
 
 | 参数        | 数据类型 | 介绍                 | 示例 |
 | ----------- | -------- | -------------------- | ---- |
@@ -235,7 +206,7 @@ WebSocket /connect/login
     "code": 200,
     "login": true,
     "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6IjA0X3JsNjNvV2ZBSVc3WEd4UWUzQzVEY3dkTSIsImtpZCI6IjA0X3JsNjNvV2ZBSVc3WEd4UWUzQzVEY3dkTSJ9.eyJpc3MiOiJodHRwczovL2lkZW50aXR5LmFwaS5uYXZpZ3JhcGguY29tIiwiYXVkIjoiaHR0cHM6Ly9pZGVudGl0eS5hcGkubmF2aWdyYXBoLmNvbS9yZXNvdXJjZXMiLCJleHAiOjE2MTcyODAwNTIsIm5iZiI6MTYxNzI3NjQ1MiwiY2xpZW50X2lkIjoid2Vic2l0ZS13ZWI.siLCJzY29wZSI6WyJvcGVuaWQiLCJlbWFpbCIsInVzZXJpbmZvIiwicm9sZXMiLCJvZmZsaW5lX2FjY2VzcyJdLCJzdWIiOiI4YWI2YWM2NS1kZGNhLTQ1N2UtOGIzNy1lZjFlZjZjMWZhNTUiLCJhdXRoX3RpbWUiOjE2MTcyNzY0NTEsImlkcCI6Imlkc3J2IiwiZm1zZGF0YSI6InJlYWQiLCJhbXIiOl",
-    "expires_in": 3600 //JWT过期时间
+    "expires_in": 3600
 }
 ```
 
@@ -245,9 +216,8 @@ WebSocket /connect/login
 {
     "code": 403,
     "login": false,
-    "token": null,
-    "expires_in": 3600,
-    "message":"错误提示"
+    token: null,
+    "expires_in": 3600
 }
 ```
 
@@ -258,34 +228,35 @@ WebSocket /connect/login
 提交用户飞行计划(此计划长期有效，除非连线后触发断线)
 
 ```http
-WebSocket /sim/plan
+HTTPS POST /sim/plan
 ```
 
-发送数据示例
-
-```json
-{
-    "callsign":"CES2287",
-    "plan":{
-      callsign:"CES2287",
-      departure: "ZUCK",
-      arrival:"ZYHB",
-      route:"ZUCK DCT ZYHB",
-      alternative:"ZYMD",
-      ETD:"1230",
-      CruiseAltitude: "",
-      planFuel:"",
-      flightRule:"IFR"
-    }
-}
-```
+参数列表
 
 | 参数     | 类型       | 说明     | 示例      |
 | -------- | ---------- | -------- | --------- |
 | callsign | string     | 呼号     | "CES2287" |
 | plan     | FlightPlan | 飞行计划 | 略        |
 
-【此接口无需响应】
+如果成功，服务器返回
+
+```json
+{
+    "code": 200,
+    "status": "success"
+}
+```
+
+否则，返回
+
+```json
+{
+    "code": 200,
+    "status": "failed"
+}
+```
+
+
 
 
 
@@ -293,50 +264,19 @@ WebSocket /sim/plan
 
 使用Client Of SKYline连接联飞服务器
 
-<b style="color:red">【更新】注：取消更新飞机信息的接口，更新与连线均使用此接口完成</b>
-
 ```http
-WebSocket /sim/connect?type='<模式，第一次为connect，后续更新数据为update>'
+HTTPS POST /sim/connect
 ```
 
-发送示例：
+参数列表
 
-````json
-{
-    "cid": "2287",
-    "callsign":"CES2287",
-    "simdata": {
-        latitude: 40.2433,
-        longitude: 123.98712,
-        altitude: 32891,
-        speed: 361,
-        squawk: 7700,
-        squawkMode: 'C',
-        pitch: 0,
-        bank: 0,
-        heading: 114,
-        onFrequency: '128.765',
-        aircraft: "A321",
-        tailNumber:"B-7161",
-        AITitle:"Airbus 321",
-        livery: "China Eastern Official"
-    },
-    otherData:{
-        realName: "Chunhao Jin",
-        remark: "Fly with Client Of SKYline in Technical Server",
-        voiceCapacity:"v" ,
-    }
-}
-````
+| 参数     | 类型          | 说明                 | 示例      |
+| -------- | ------------- | -------------------- | --------- |
+| cid      | string        | 用户cid              | "2287"    |
+| callsign | string        | 用户呼号             | "CES2287" |
+| simdata  | SimObjectData | 用户初始化模拟器数据 | 略        |
 
-| 参数      | 类型          | 说明                                      | 示例      |
-| --------- | ------------- | ----------------------------------------- | --------- |
-| cid       | string        | 用户cid                                   | "2287"    |
-| callsign  | string        | 用户呼号                                  | "CES2287" |
-| simdata   | SimObjectData | 用户初始化模拟器数据                      | 略        |
-| otherData | OtherData     | 也是用户其他数据，只不过不是simObject里的 | 略        |
-
-如果type=update，说明之前已经连接过了，本次为更新数据，服务器无需响应，否则为第一次连接，则服务器返回连接状态(status)
+服务器返回连接状态(status)，若成功，则将在线数据一并返回（注：为尽量减少接口请求，连接成功后即一并将数据返回，减少二次请求获取数据，update接口同理）
 
 如果失败
 
@@ -344,7 +284,11 @@ WebSocket /sim/connect?type='<模式，第一次为connect，后续更新数据�
 {
     "code": 200,
     "connected": false,
-    "status": "Invalid Account"
+    "status": "Invalid Account",
+    "online":[
+        "pilots":[],
+    	"atcs":[]
+    ]//如果连接失败，始终返回空数组
 }
 ```
 
@@ -364,37 +308,46 @@ status对应内容如下
 ```json
 {
     "code": 200,
-    "connected": true
+    "connected": true,
+    "status": "Enjoy your flight in new SKYline Technical Server",
+    online":[
+        "pilots":[],
+    	"atcs":[]
+    ]//返回数据，格式如上方“数据结构”中在线数据的一样
 }
 ```
 
 ### 更新联飞信息
 
-不再单独设置接口，使用/sim/connect
+COS里面每隔几秒钟访问一次此接口，用于更新用户模拟器位置等信息，同时将在线信息一并返回
+
+```http
+HTTPS POST /sim/update
+```
+
+参数列表
+
+| 参数     | 类型          | 说明                 | 示例      |
+| -------- | ------------- | -------------------- | --------- |
+| callsign | string        | 用户callsign         | "CES2287" |
+| simdata  | SimObjectData | 用户初始化模拟器数据 | 略        |
+
+返回数据与连接接口的一样，此处省略
 
 ### 应答机设置
 
-手动设置应答机模式
-
 ```http
-WebSocket /sim/squawk
+HTTPS POST /sim/squawk
 ```
 
-发送示例：
-
-```json
-{
-    "callsign":"CES2287".
-    "type": "S"
-}
-```
+参数列表
 
 | 参数     | 类型              | 说明 | 示例      |
 | -------- | ----------------- | ---- | --------- |
 | callsign | string            | 呼号 | "CES2287" |
 | type     | "S" \| "C" \| "I" | 类型 | C         |
 
-【此接口无需响应】
+如果成功，服务器返回status="success"，否则返回详细信息
 
 
 
@@ -403,7 +356,7 @@ WebSocket /sim/squawk
 触发断线的条件有以下几种：手动访问断线接口（如用户手动断线、客户端检测到模拟器退出等）、服务端对应数据15秒钟没有被更新等情况
 
 ```http
-WebSocket /sim/disconnect
+HTTPS POST /sim/disconnect
 ```
 
 参数列表
@@ -412,80 +365,34 @@ WebSocket /sim/disconnect
 | -------- | ------ | ---- | --------- |
 | callsign | string | 呼号 | “CES2287” |
 
-【此接口无需响应】
+返回数据
+
+```json
+{
+    "code": 200,
+    "disconnect": true,
+    "totalOnline": 128200,//共计在线时间，格式为时间戳
+}
+```
+
+
 
 ### 获取在线数据
 
 ```http
-WebSocket /sim/get
+HTTP GET /sim/get
 ```
 
-无需参数, 用户访问后循环2-3秒发送一次数据
-
-注：
-
-机组数据只返回cid, callsign与simobject_data即可，其他信息无需返回
-
-管制员可以全部返回
+此接口无需参数
 
 返回数据
 
 ```json
 {
-    "pilots":[
-        {
-            cid: "2287",
-            callsign: "CES2287",
-            simobject_data:{
-                latitude: 40.2433,
-                longitude: 123.98712,
-                altitude: 32891,
-                speed: 361,
-                squawk: 7700,
-                squawkMode: 'C', // 'C' | 'S' | 'I'
-                pitch: 0,
-                bank: 0,
-                heading: 114,
-                onFrequency: '128.765',
-                aircraft: "A321",
-                tailNumber:"B-7161",
-                AITitle:"Airbus 321",
-                livery: "China Eastern Official"
-            }
-        }
-    ],
-    "atcs":[
-        {
-            isConnected: true,
-            connectTime: 16554212000,
-            updatedTime: 1655430800,
-            user_data:{
-                cid: "2287",
-                rating: 12,
-                realName: "Chunhao Jin",
-                remark: "testing for new software",
-                voiceCapacity:"v" //只有v可选择
-            },
-            online_data:{
-                callsign: "ZYHB_05_APP",
-                realName: "Chunhao Jin",
-                frequency: "128.75",
-                range: 400,
-                latitude: 44.981,
-                longitude: 127.276,
-                expectOffline: "1230",
-                info_line: [
-                    "Callsign Harbin Approach",
-                    "Using new SKYScope(beta)",
-                    "enjoy your flight!"
-                ]
-            }
-        }
-    ]
+    "pilots":[],
+    "atcs":[]
 }
 ```
-
-
 
 ### 发送信息
 
@@ -495,104 +402,49 @@ WebSocket /sim/get
 HTTPS POST /message/send
 ```
 
-数据形式见于“数据结构” - “实时聊天信息”
+参数列表
+
+| 参数            | 类型   | 说明          | 示例           |
+| --------------- | ------ | ------------- | -------------- |
+| sender_cid      | string | 发送消息者cid | "2287"         |
+| sender_callsign | string | 发送者呼号    | "ZBAA_13_APP"  |
+| to_callsign     | string | 接受者呼号    | "DLH1398"      |
+| message         | string | 消息内容      | "晚上来上管不" |
+
+如果发送成功，返回
 
 ```json
 {
-   sender:{
-      cid: "2287",
-      callsign: "PRC_FSS",
-      type:"System" // "System" 系统级别消息，只有ADM允许发送; "BroadCast" 广播，ADM & SUP可以发送；"Chat" 聊天，均可
-   },
-   to: "DLH1398",
-   sendTime:  1655437600,
-   content:"Welcome to SKYline!"
+    "code": 200,
+    "status": "success"
 }
 ```
 
-将消息转发时，将原消息直接发送即可，无需后端进行其他处理，无需响应
-
-| 类型      | 说明                                               | 权限         |
-| --------- | -------------------------------------------------- | ------------ |
-| System    | 发送系统基本消息，所有人均能接收，标题显示"System" | ADM only     |
-| BroadCast | 发送广播，所有人均能接收，优先级低于System         | ADM & SUP    |
-| Chat      | 私人聊天                                           | 不为封禁均可 |
-
-【此接口无需响应】
-
-### 公共频道信息
-
-发送消息到公共频道
-
-```http
-WebSocket /message/channel
-```
-
-发送数据
+否则，返回
 
 ```json
 {
-   sender:{
-      cid: "2287",
-      callsign: "ZYCC_APN",
-      type: "public"
-   },
-   to: "129.870",
-   sendTime:  1655437600,
-   content:"Welcome to 129.870, conteoller online~"
+    "code": 200,
+    "status": "callsign not found" 
+    // "callsign not found" 未找到呼号 "server busy" 服务器忙 "invalid send"不合法的发送请求
 }
 ```
-
-将此消息发送到该频道内的全部用户即可，无需响应结果
-
-【此接口无需响应】
 
 
 
 ### 管制员连线
 
 ```http
-WebSocket /control/connect
+HTTPS POST /control/connect
 ```
-
-发送示例
-
-```json
-{
-    "cid": "2287",
-    "callsign": "ZSQD_TWR",
-   	"online_data":{
-        callsign: "ZYHB_05_APP",
-        realName: "Chunhao Jin",
-        frequency: "128.75",
-        range: 400,
-        latitude: 44.981,
-        longitude: 127.276,
-        expectOffline: "1230",
-        info_line: [
-            "Callsign Harbin Approach",
-            "Using new SKYScope(beta)",
-            "enjoy your flight!"
-        ]
-    },
-    "other_data":{
-        realName: "Chunhao Jin",
-        remark: "testing for new software",
-        voiceCapacity:"v" //只有v可选择
-    }
-}
-```
-
-
 
 参数列表
 
-| 参数        | 类型                | 说明                         | 示例          |
-| ----------- | ------------------- | ---------------------------- | ------------- |
-| cid         | string              | 用户cid                      | "2287"        |
-| callsign    | string              | 用户呼号                     | "ZYHB_05_APP" |
-| online_data | ControllerLoginData | 管制员在线信息               | 略            |
-| other_data  | ControllerLoginData | 也是管制员信息，但是别的内容 | 略            |
+| 参数     | 类型                | 说明           | 示例      |
+| -------- | ------------------- | -------------- | --------- |
+| cid      | string              | 用户cid        | "2287"    |
+| callsign | string              | 用户呼号       | "CES2287" |
+| data     | ControllerLoginData | 管制员登录信息 | 略        |
 
 也会返回在线列表数据，格式与“连接联飞软件”的几乎相同，此处省略
 
@@ -601,7 +453,7 @@ WebSocket /control/connect
 ### 管制员接管飞机
 
 ```http
-WebSocket /control/accept
+HTTPS POST /control/accept
 ```
 
 参数列表：
@@ -611,7 +463,14 @@ WebSocket /control/accept
 | controller | string | 管制员callsign | "ZGGG_W_TWR" |
 | flight     | string | 机组callsign   | "CCA4154"    |
 
-成功接管，无需返回信息
+成功接管，服务器返回
+
+```json
+{
+    "code": 200,
+    "status": "success"
+}
+```
 
 否则，返回
 
@@ -625,24 +484,17 @@ WebSocket /control/accept
 
 
 
+
+
 ### 管制员修改机组临时数据
 
 在雷达操作时候，管制员给机组设置临时数据（如目标高度、目标速度等内容，需要进行上传与共享，这样其他管制员就页可以看到数据
 
 ```http
-WebSocket /control/modify
+HTTPS POST /control/modify
 ```
 
-发送示例
-
-```json
-{
-    "cid": "ZSPD_TWR",
-    "flight": "CES2287",
-    "type": "alt",
-    "data": "9800 - FL321"
-}
-```
+参数列表
 
 | 参数   | 类型                    | 说明                       | 示例           |
 | ------ | ----------------------- | -------------------------- | -------------- |
@@ -669,7 +521,14 @@ ModifyType数据详情结构
 | etd          | 预计起飞时间     | string         | "1225"             |
 | fuel         | 预计油量使用时间 | string         | "0340"             |
 
-修改成功，无需响应
+修改成功，返回
+
+```json
+{
+    "code": 200,
+    "status": "success"
+}
+```
 
 修改失败，返回
 
@@ -686,10 +545,10 @@ ModifyType数据详情结构
 ### 移交/取消接管
 
 ```http
-WebSocket /control/handle
+HTTPS POST /control/handle
 ```
 
-JSON参数列表
+参数列表
 
 | 参数       | 类型              | 说明                                         | 示例       |
 | ---------- | ----------------- | -------------------------------------------- | ---------- |
@@ -698,7 +557,16 @@ JSON参数列表
 | mode       | "handle" \| "end" | 模式(移交/取消接管)                          | handle     |
 | handleTo   | string \| null    | 申请移交给的管制员callsign （end模式不需要） | "ZSPD_CTR" |
 
-成功，无需响应，失败，返回
+成功，返回
+
+```json
+{
+    "code": 200,
+    "status": "success"
+}
+```
+
+失败，返回
 
 ```json
 {
@@ -715,7 +583,7 @@ JSON参数列表
 只有SUP与ADM权限才允许使用本接口，该接口可以使机组/管制员强行断线
 
 ```http
-WebSocket /control/kill
+HTTPS POST /control/kill
 ```
 
 参数列表：
@@ -725,7 +593,14 @@ WebSocket /control/kill
 | type     | "atc" \| "pilot" | 使机组/管制员断线 | pilot     |
 | callsign | string           | 指定呼号          | "DLH1398" |
 
-如果成功，无需响应
+如果成功，服务器返回
+
+```json
+{
+    "code": 200,
+    "status": "success"
+}
+```
 
 否则，返回结果
 
@@ -738,12 +613,16 @@ WebSocket /control/kill
 
 
 
-### 气象信息(本功能开发待定)
+注（彩蛋），如果触发本接口且invalid account，服务器会给发送者发送一个warning(客户端&管制软件)，虽然有域名保护，一般人进不去
+
+
+
+### 气象信息
 
 SKYScope用，COS也可能用？
 
 ```http
-WebSocket /tool/weather?icao=<机场ICAO>
+HTTPS GET /tool/weather?icao=<机场ICAO>
 ```
 
 服务器返回
