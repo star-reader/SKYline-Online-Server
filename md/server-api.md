@@ -77,6 +77,7 @@ const clientData = {
         pitch: 0,
         bank: 0,
         heading: 114,
+        onFrequency: '128.765',
         aircraft: "A321",
         tailNumber:"B-7161",
         AITitle:"Airbus 321",
